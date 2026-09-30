@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>POSE RUNNER | Control The Game With Your Body</title>
+  <meta name="description" content="Pose Runner is a futuristic Computer Vision endless runner game controlled entirely by real-time human body pose estimation.">
+  
+  <!-- Modern Futuristic Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Rajdhani:wght@500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- MediaPipe Pose and Camera Utils CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="./src/styles/main.css">
+  <link rel="stylesheet" href="./src/styles/cyberpunk-theme.css">
+  <link rel="stylesheet" href="./src/styles/hud.css">
+  <link rel="stylesheet" href="./src/styles/modals.css">
+</head>
+<body class="cyber-theme">
+  <!-- Hidden video element for raw camera capture -->
+  <video id="webcam-raw" playsinline style="display: none;"></video>
+
+  <!-- Global Quick Toolbar (Always accessible at top edge) -->
+  <header class="top-nav-bar" id="top-nav-bar">
+    <div class="brand-mini">
+      <span class="neon-dot"></span>
+      <span class="brand-name">POSE RUNNER <span class="badge-cv">AI CV</span></span>
+    </div>
+    <div class="nav-controls">
+      <button id="btn-sound-toggle" class="icon-btn" title="Toggle Sound (M)" aria-label="Toggle Sound">
+        <span id="sound-icon">🔊</span>
+      </button>
+      <button id="btn-fullscreen-toggle" class="icon-btn" title="Toggle Fullscreen (F)" aria-label="Toggle Fullscreen">
+        <span id="fullscreen-icon">⛶</span>
+      </button>
+      <button id="btn-keyboard-mode" class="pill-btn mode-pill" title="Toggle Keyboard Fallback for Testing">
+        <span class="mode-dot"></span>
+        <span id="control-mode-text">AI BODY TRACKING</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================================================= -->
+  <!-- 1. WELCOME SCREEN -->
+  <!-- ================================================= -->
+  <section id="welcome-screen" class="app-screen active">
+    <div class="screen-bg-overlay"></div>
+    <div class="cyber-grid-floor"></div>
+
+    <div class="welcome-content">
+      <div class="expo-badge-pill">
+        <span class="pulse-ring"></span>
+        <span>COLLEGE SCIENCE EXPO • AI & COMPUTER VISION LAB</span>
+      </div>
+
+      <h1 class="main-title glitched" data-text="POSE RUNNER">
+        POSE RUNNER
+      </h1>
+      <p class="main-subtitle">YOUR BODY IS THE CONTROLLER</p>
+      <p class="main-desc">
+        Run, jump, dodge, and duck through a futuristic cyber-highway using your real-world body movements captured in real-time by your webcam.
+      </p>
+
+      <!-- Visual Pipeline Diagram -->
+      <div class="cv-flow-diagram">
+        <div class="flow-step">
+          <div class="step-icon">👤</div>
+          <div class="step-label">PLAYER</div>
+        </div>
+        <div class="flow-arrow">➔</div>
+        <div class="flow-step">
+          <div class="step-icon">📷</div>
+          <div class="step-label">WEBCAM</div>
+        </div>
+        <div class="flow-arrow">➔</div>
+        <div class="flow-step highlight-step">
+          <div class="step-icon">🧠</div>
+          <div class="step-label">AI POSE TRACKING</div>
+        </div>
+        <div class="flow-arrow">➔</div>
+        <div class="flow-step">
+          <div class="step-icon">🎮</div>
+          <div class="step-label">3D GAME ACTION</div>
+        </div>
+      </div>
+
+      <!-- Welcome Action Buttons -->
+      <div class="welcome-actions">
+        <button id="btn-start-calibration" class="btn-cyber primary pulse-cta">
+          <span class="btn-glow"></span>
+          <span class="btn-text">⚡ PLAY NOW</span>
+        </button>
+        <button id="btn-open-controls" class="btn-cyber secondary">
+          <span class="btn-text">🎮 HOW TO PLAY</span>
+        </button>
+        <button id="btn-open-expo" class="btn-cyber secondary">
+          <span class="btn-text">🧠 HOW AI WORKS</span>
+        </button>
+        <button id="btn-open-tech" class="btn-cyber tertiary">
+          <span class="btn-text">🔬 TECHNOLOGY</span>
+        </button>
+      </div>
+
+      <div class="quick-status-bar">
+        <div class="status-item">
+          <span class="status-label">HIGH SCORE:</span>
+          <span id="welcome-high-score" class="status-val neon-gold">0</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">ENGINE:</span>
+          <span class="status-val">THREE.JS 3D + MEDIAPIPE</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">LATENCY:</span>
+          <span class="status-val neon-green">&lt; 25ms REAL-TIME</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================= -->
+  <!-- 2. POSE CALIBRATION SCREEN -->
+  <!-- ================================================= -->
+  <section id="calibration-screen" class="app-screen">
+    <div class="calibration-container">
+      <div class="calibration-header">
+        <h2 class="section-title">POSE CALIBRATION</h2>
+        <p class="section-subtitle">“Stand in the center of the camera and keep your body straight.”</p>
+      </div>
+
+      <div class="calibration-main">
+        <!-- Live Video & Skeleton View -->
+        <div class="calibration-video-wrapper">
+          <canvas id="calibration-canvas" width="640" height="480"></canvas>
+          <div class="guide-silhouette-box" id="guide-box">
+            <div class="guide-corner top-left"></div>
+            <div class="guide-corner top-right"></div>
+            <div class="guide-corner bottom-left"></div>
+            <div class="guide-corner bottom-right"></div>
+            <div class="guide-head-zone">HEAD ZONE</div>
+            <div class="guide-center-line"></div>
+          </div>
+          <div id="calibration-countdown-overlay" class="countdown-overlay hidden">
+            <div class="countdown-number" id="calib-countdown-num">3</div>
+            <div class="countdown-label">HOLD NEUTRAL POSE...</div>
+          </div>
+        </div>
+
+        <!-- Real-time Landmark Checklist & Guidance -->
+        <div class="calibration-sidebar">
+          <div class="cyber-card">
+            <h3 class="card-title">AI POSE VERIFICATION</h3>
+            <ul class="landmark-checklist">
+              <li id="check-head" class="check-item pending">
+                <span class="check-icon">⏳</span>
+                <span class="check-name">Head & Face Detected</span>
+              </li>
+              <li id="check-shoulders" class="check-item pending">
+                <span class="check-icon">⏳</span>
+                <span class="check-name">Shoulders Detected</span>
+              </li>
+              <li id="check-hips" class="check-item pending">
+                <span class="check-icon">⏳</span>
+                <span class="check-name">Hips Detected</span>
+              </li>
+              <li id="check-fullbody" class="check-item pending">
+                <span class="check-icon">⏳</span>
+                <span class="check-name">Full Body / Knees Detected</span>
+              </li>
+            </ul>
+
+            <!-- Dynamic Posture Feedback -->
+            <div class="posture-guidance" id="posture-feedback">
+              <span class="pulse-dot"></span>
+              <span id="posture-msg">Initializing camera and AI pose tracker...</span>
+            </div>
+
+            <!-- Live Posture Meters -->
+            <div class="meter-group">
+              <div class="meter-label-row">
+                <span>Torso Alignment:</span>
+                <span id="meter-torso-val">0.00</span>
+              </div>
+              <div class="meter-track">
+                <div class="meter-center-marker"></div>
+                <div id="meter-torso-bar" class="meter-fill-center"></div>
+              </div>
+            </div>
+
+            <!-- Calibration Action Buttons -->
+            <div class="calibration-buttons">
+              <button id="btn-run-calibration" class="btn-cyber primary" disabled>
+                <span class="btn-text">📐 [ CALIBRATE ]</span>
+              </button>
+              <button id="btn-start-game" class="btn-cyber success pulse-cta hidden">
+                <span class="btn-text">🚀 [ START GAME ]</span>
+              </button>
+              <button id="btn-cancel-calibration" class="btn-cyber text-btn">
+                <span>Cancel / Return</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="calibration-tips">
+            <strong>💡 Pro-Tips for Best Tracking:</strong>
+            <ul>
+              <li>Stand approx 1.8m to 2.5m away from the webcam.</li>
+              <li>Ensure your room is well lit.</li>
+              <li>Avoid loose flapping jackets or people walking behind you.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================= -->
+  <!-- 3. GAMEPLAY SCREEN (3D World + HUD + Camera Panel) -->
+  <!-- ================================================= -->
+  <section id="game-screen" class="app-screen">
+    <!-- 3D Three.js Canvas Container -->
+    <div id="game-canvas-container"></div>
+
+    <!-- In-Game HUD -->
+    <div class="game-hud" id="game-hud">
+      <!-- Top HUD Stats Bar -->
+      <div class="hud-top-bar">
+        <div class="hud-stat-box score-box">
+          <div class="stat-label">SCORE</div>
+          <div class="stat-val" id="hud-score">0000</div>
+        </div>
+
+        <div class="hud-stat-box distance-box">
+          <div class="stat-label">DISTANCE</div>
+          <div class="stat-val"><span id="hud-distance">0</span> <span class="unit">m</span></div>
+        </div>
+
+        <div class="hud-stat-box speed-box">
+          <div class="stat-label">SPEED</div>
+          <div class="stat-val"><span id="hud-speed">1.0</span><span class="unit">x</span></div>
+        </div>
+
+        <div class="hud-stat-box level-box">
+          <div class="stat-label">LEVEL</div>
+          <div class="stat-val" id="hud-level">01</div>
+        </div>
+
+        <div class="hud-stat-box lives-box">
+          <div class="stat-label">LIVES</div>
+          <div class="lives-display" id="hud-lives">
+            <span class="heart active">❤️</span>
+            <span class="heart active">❤️</span>
+            <span class="heart active">❤️</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Combo & Streak Banner (Floating) -->
+      <div class="combo-pill hidden" id="combo-pill">
+        <span class="combo-multiplier" id="combo-multiplier">2x</span>
+        <span class="combo-text">COMBO STREAK!</span>
+      </div>
+
+      <!-- Lane Position Indicators (Bottom Center) -->
+      <div class="lane-indicator-hud">
+        <div class="lane-tab" id="lane-left">LEFT</div>
+        <div class="lane-tab active" id="lane-center">CENTER</div>
+        <div class="lane-tab" id="lane-right">RIGHT</div>
+      </div>
+
+      <!-- Real-Time Camera Panel (Top-Right PiP) -->
+      <div class="camera-pip-panel" id="camera-panel">
+        <div class="pip-header">
+          <div class="pip-title">
+            <span class="live-dot"></span>
+            <span>AI POSE TRACKING</span>
+          </div>
+          <div class="pip-fps"><span id="cv-fps">30</span> FPS</div>
+        </div>
+        
+        <div class="pip-canvas-wrapper">
+          <canvas id="pip-canvas" width="220" height="165"></canvas>
+          <div class="pip-overlay-crosshair"></div>
+        </div>
+
+        <!-- Detected Action Visual Badge -->
+        <div class="detected-action-badge">
+          <div class="action-caption">CURRENT ACTION:</div>
+          <div class="action-highlight" id="detected-action-text">RUNNING</div>
+        </div>
+
+        <!-- Real-time Body Balance Gauge -->
+        <div class="pip-meters">
+          <div class="pip-meter-row">
+            <span>LEAN:</span>
+            <div class="pip-meter-bar">
+              <div class="pip-meter-zone-left" title="Left Lane Threshold"></div>
+              <div class="pip-meter-center"></div>
+              <div class="pip-meter-zone-right" title="Right Lane Threshold"></div>
+              <div id="pip-lean-indicator" class="pip-meter-pointer"></div>
+            </div>
+            <span class="pip-zone-indicator" id="pip-zone-text">C</span>
+          </div>
+          <div class="pip-meter-row">
+            <span>VERT:</span>
+            <div class="pip-meter-bar">
+              <div class="pip-meter-center"></div>
+              <div id="pip-vert-indicator" class="pip-meter-pointer"></div>
+            </div>
+            <span class="pip-zone-indicator" id="pip-vert-text">STAND</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Imminent Obstacle Action Prompt / Guidance -->
+      <div class="obstacle-action-prompt hidden" id="obstacle-prompt">
+        <span class="prompt-icon" id="prompt-icon">⬆️</span>
+        <span class="prompt-text" id="prompt-text">JUMP!</span>
+      </div>
+
+      <!-- Floating floating-scores container (e.g. +100 DODGE) -->
+      <div class="floating-score-container" id="floating-scores"></div>
+
+      <!-- Level Up Fullscreen Banner -->
+      <div class="level-up-banner hidden" id="levelup-banner">
+        <div class="levelup-title">LEVEL UP!</div>
+        <div class="levelup-desc" id="levelup-desc">SPEED INCREASED • NEW HAZARDS DETECTED</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================= -->
+  <!-- 4. GAME OVER SCREEN -->
+  <!-- ================================================= -->
+  <section id="gameover-screen" class="app-screen">
+    <div class="gameover-container">
+      <div class="gameover-header">
+        <h2 class="gameover-title glitched" data-text="GAME OVER">GAME OVER</h2>
+        <div id="gameover-record-badge" class="new-record-badge hidden">🏆 NEW HIGH SCORE!</div>
+      </div>
+
+      <div class="stats-summary-grid">
+        <div class="stat-card highlight">
+          <div class="card-label">FINAL SCORE</div>
+          <div class="card-val neon-gold" id="go-score">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="card-label">DISTANCE REACHED</div>
+          <div class="card-val"><span id="go-distance">0</span> m</div>
+        </div>
+        <div class="stat-card">
+          <div class="card-label">OBSTACLES AVOIDED</div>
+          <div class="card-val" id="go-obstacles">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="card-label">JUMPS PERFORMED</div>
+          <div class="card-val" id="go-jumps">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="card-label">CROUCHES PERFORMED</div>
+          <div class="card-val" id="go-crouches">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="card-label">LANE CHANGES</div>
+          <div class="card-val" id="go-lane-changes">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="card-label">REACTION TIME</div>
+          <div class="card-val"><span id="go-reaction-time">285</span> ms</div>
+        </div>
+        <div class="stat-card">
+          <div class="card-label">MAX COMBO</div>
+          <div class="card-val" id="go-max-combo">x1</div>
+        </div>
+      </div>
+
+      <div class="gameover-actions">
+        <button id="btn-play-again" class="btn-cyber primary pulse-cta">
+          <span class="btn-text">🔄 PLAY AGAIN</span>
+        </button>
+        <button id="btn-recalibrate" class="btn-cyber secondary">
+          <span class="btn-text">📐 RE-CALIBRATE POSE</span>
+        </button>
+        <button id="btn-go-how-it-works" class="btn-cyber secondary">
+          <span class="btn-text">🧠 VIEW HOW IT WORKS</span>
+        </button>
+        <button id="btn-go-leaderboard" class="btn-cyber tertiary">
+          <span class="btn-text">🏆 LEADERBOARD</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================= -->
+  <!-- MODAL: HOW AI WORKS (Science Expo Educational Panel) -->
+  <!-- ================================================= -->
+  <div class="cyber-modal hidden" id="expo-modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog large-dialog">
+      <div class="modal-header">
+        <h2 class="modal-title">HOW DOES POSE RUNNER UNDERSTAND YOU?</h2>
+        <button class="modal-close-btn" data-close-modal="expo-modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="expo-intro">
+          <p class="highlight-lead">
+            “The camera captures your body movement. Computer Vision detects body landmarks and analyzes their positions. The system converts your movement into a game command.”
+          </p>
+        </div>
+
+        <!-- 7-Step Interactive Pipeline Diagram -->
+        <div class="pipeline-flow-container">
+          <div class="pipeline-node">
+            <div class="p-num">01</div>
+            <div class="p-icon">📹</div>
+            <div class="p-title">WEBCAM</div>
+            <div class="p-desc">High-speed 30-60 FPS RGB video capture</div>
+          </div>
+          <div class="pipeline-connector">↓</div>
+
+          <div class="pipeline-node">
+            <div class="p-num">02</div>
+            <div class="p-icon">🖼️</div>
+            <div class="p-title">VIDEO FRAME</div>
+            <div class="p-desc">Preprocessed & normalized tensor matrix</div>
+          </div>
+          <div class="pipeline-connector">↓</div>
+
+          <div class="pipeline-node highlight">
+            <div class="p-num">03</div>
+            <div class="p-icon">🧠</div>
+            <div class="p-title">POSE DETECTION</div>
+            <div class="p-desc">MediaPipe BlazePose Deep Neural Network inference</div>
+          </div>
+          <div class="pipeline-connector">↓</div>
+
+          <div class="pipeline-node">
+            <div class="p-num">04</div>
+            <div class="p-icon">📍</div>
+            <div class="p-title">BODY LANDMARKS</div>
+            <div class="p-desc">33 3D skeletal keypoint coordinates (X, Y, Z, Confidence)</div>
+          </div>
+          <div class="pipeline-connector">↓</div>
+
+          <div class="pipeline-node highlight">
+            <div class="p-num">05</div>
+            <div class="p-icon">📐</div>
+            <div class="p-title">MOVEMENT ANALYSIS</div>
+            <div class="p-desc">Center-of-mass drift, hip elevation delta, EMA smoothing</div>
+          </div>
+          <div class="pipeline-connector">↓</div>
+
+          <div class="pipeline-node">
+            <div class="p-num">06</div>
+            <div class="p-icon">⚡</div>
+            <div class="p-title">GAME COMMAND</div>
+            <div class="p-desc">Hysteresis threshold trigger: LEAN, JUMP, CROUCH</div>
+          </div>
+          <div class="pipeline-connector">↓</div>
+
+          <div class="pipeline-node">
+            <div class="p-num">07</div>
+            <div class="p-icon">🏃</div>
+            <div class="p-title">CHARACTER ACTION</div>
+            <div class="p-desc">3D Kinematic physics animation in Three.js</div>
+          </div>
+        </div>
+
+        <!-- Detailed Movement Mapping Section -->
+        <div class="movement-mapping-grid">
+          <div class="mapping-card">
+            <div class="map-action">LEAN LEFT</div>
+            <div class="map-arrow">➔</div>
+            <div class="map-result">MOVE LEFT LANE</div>
+            <p class="map-desc">Torso center X drops below calibrated neutral by &gt; 12% torso scale.</p>
+          </div>
+          <div class="mapping-card">
+            <div class="map-action">LEAN RIGHT</div>
+            <div class="map-arrow">➔</div>
+            <div class="map-result">MOVE RIGHT LANE</div>
+            <p class="map-desc">Torso center X rises above calibrated neutral by &gt; 12% torso scale.</p>
+          </div>
+          <div class="mapping-card">
+            <div class="map-action">JUMP</div>
+            <div class="map-arrow">➔</div>
+            <div class="map-result">JUMP OVER BARRIER</div>
+            <p class="map-desc">Hip Y coordinate rises (decreases in screen Y) above standing threshold.</p>
+          </div>
+          <div class="mapping-card">
+            <div class="map-action">CROUCH</div>
+            <div class="map-arrow">➔</div>
+            <div class="map-result">SLIDE UNDER LASER</div>
+            <p class="map-desc">Torso and hip center drops downward relative to calibrated baseline.</p>
+          </div>
+        </div>
+
+        <!-- Educational Deep Dive: Keypoints vs Raw Pixels -->
+        <div class="ai-insight-box">
+          <h4>💡 Why Track 33 Landmarks Instead of Classifying Pixels?</h4>
+          <p>
+            Standard image classification would require classifying millions of camera pixels every frame, which would be slow and prone to background clutter.
+            By extracting <strong>33 geometric keypoints</strong> first, our movement classification algorithms run on simple vector mathematics in <strong>less than 0.1 milliseconds</strong>, enabling blazing-fast 60 FPS gameplay on any laptop!
+          </p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-cyber primary" data-close-modal="expo-modal">UNDERSTOOD!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================= -->
+  <!-- MODAL: CONTROLS SCREEN (HOW TO PLAY) -->
+  <!-- ================================================= -->
+  <div class="cyber-modal hidden" id="controls-modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 class="modal-title">HOW TO PLAY</h2>
+        <button class="modal-close-btn" data-close-modal="controls-modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="controls-guide-grid">
+          <div class="control-card">
+            <div class="control-icon">👈</div>
+            <div class="control-name">LEAN LEFT</div>
+            <div class="control-effect">← MOVE LEFT LANE</div>
+            <p class="control-hint">Tilt your upper body gently to your left.</p>
+          </div>
+          <div class="control-card">
+            <div class="control-icon">👉</div>
+            <div class="control-name">LEAN RIGHT</div>
+            <div class="control-effect">→ MOVE RIGHT LANE</div>
+            <p class="control-hint">Tilt your upper body gently to your right.</p>
+          </div>
+          <div class="control-card">
+            <div class="control-icon">🦘</div>
+            <div class="control-name">JUMP</div>
+            <div class="control-effect">↑ JUMP OVER OBSTACLE</div>
+            <p class="control-hint">Hop up or raise your hips to clear low barriers.</p>
+          </div>
+          <div class="control-card">
+            <div class="control-icon">🦆</div>
+            <div class="control-name">CROUCH</div>
+            <div class="control-effect">↓ SLIDE UNDER LASERS</div>
+            <p class="control-hint">Bend your knees and squat down low to duck.</p>
+          </div>
+        </div>
+
+        <div class="setup-checklist-box">
+          <h4>CAMERA SETUP ADVICE:</h4>
+          <ul>
+            <li>“Make sure your full body is visible to the camera.”</li>
+            <li>Stand 1.8m to 2.5m away with clear lighting.</li>
+            <li>Return to neutral center position between lane movements.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-cyber primary" id="btn-controls-calibrate">READY TO CALIBRATE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================= -->
+  <!-- MODAL: TECHNOLOGY BEHIND THE GAME -->
+  <!-- ================================================= -->
+  <div class="cyber-modal hidden" id="tech-modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog large-dialog">
+      <div class="modal-header">
+        <h2 class="modal-title">TECHNOLOGY BEHIND THE GAME</h2>
+        <button class="modal-close-btn" data-close-modal="tech-modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="tech-cards-grid">
+          <div class="tech-card">
+            <div class="tech-badge">CORE AI</div>
+            <h3>MediaPipe Pose</h3>
+            <p>
+              Google's state-of-the-art ML solution for high-fidelity body pose tracking, inferring 33 3D landmarks and background mask from single RGB frames.
+            </p>
+          </div>
+
+          <div class="tech-card">
+            <div class="tech-badge">GRAPHICS</div>
+            <h3>Three.js & WebGL</h3>
+            <p>
+              Hardware-accelerated 3D graphics rendering the futuristic neon city, dynamic lighting, procedural runner animations, and particle trails.
+            </p>
+          </div>
+
+          <div class="tech-card">
+            <div class="tech-badge">VISION INPUT</div>
+            <h3>Webcam MediaDevices API</h3>
+            <p>
+              Low-latency browser media capture providing continuous video streaming at native display refresh rates.
+            </p>
+          </div>
+
+          <div class="tech-card">
+            <div class="tech-badge">ALGORITHMS</div>
+            <h3>Real-Time Pose Tracking & Kinematics</h3>
+            <p>
+              Scale-invariant normalization, Exponential Moving Average (EMA) smoothing filters, and hysteresis state machines preventing accidental inputs.
+            </p>
+          </div>
+
+          <div class="tech-card">
+            <div class="tech-badge">AUDIO</div>
+            <h3>Web Audio API Synthesizer</h3>
+            <p>
+              Procedural cyber synth sound effects, dynamic retro beats, laser swooshes, and audio feedback generated on-the-fly with zero network latency.
+            </p>
+          </div>
+
+          <div class="tech-card">
+            <div class="tech-badge">CORE STACK</div>
+            <h3>Modern Vanilla JavaScript (ESNext)</h3>
+            <p>
+              Clean, modular, object-oriented design optimized with <code>requestAnimationFrame</code> for rock-solid 60 FPS performance on standard laptops.
+            </p>
+          </div>
+        </div>
+
+        <div class="fairness-disclaimer-box">
+          <h4>🔬 Science Expo Transparency Note</h4>
+          <p>
+            This project uses <strong>Google's pre-trained MediaPipe Pose neural network model</strong> compiled to WebAssembly (WASM). No deep-learning model is being trained in real time on this machine; instead, we execute <em>real-time edge inference</em> and perform custom spatial-kinematic analysis to map human landmarks into game physics!
+          </p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-cyber primary" data-close-modal="tech-modal">CLOSE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================= -->
+  <!-- MODAL: HIGH SCORES / LEADERBOARD -->
+  <!-- ================================================= -->
+  <div class="cyber-modal hidden" id="leaderboard-modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 class="modal-title">🏆 SCIENCE EXPO LEADERBOARD</h2>
+        <button class="modal-close-btn" data-close-modal="leaderboard-modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <table class="cyber-table">
+          <thead>
+            <tr>
+              <th>RANK</th>
+              <th>PLAYER</th>
+              <th>SCORE</th>
+              <th>DISTANCE</th>
+              <th>DATE</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-tbody">
+            <!-- Dynamically populated from localStorage -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-cyber secondary" id="btn-reset-leaderboard">RESET SCORES</button>
+        <button class="btn-cyber primary" data-close-modal="leaderboard-modal">CLOSE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================= -->
+  <!-- MODAL: CAMERA ERROR / PERMISSION FALLBACK -->
+  <!-- ================================================= -->
+  <div class="cyber-modal hidden" id="camera-error-modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 class="modal-title text-red">⚠️ CAMERA ACCESS NEEDED</h2>
+      </div>
+
+      <div class="modal-body">
+        <div class="error-icon-large">📷🚫</div>
+        <p class="error-msg" id="camera-error-desc">
+          “Camera access is required for Pose Runner.”
+        </p>
+        <p class="error-submsg">
+          Please check your browser address bar and grant camera permissions so MediaPipe can track your body movements.
+        </p>
+        <div class="fallback-action-box">
+          <p>Or you can play using the keyboard demo mode:</p>
+          <button id="btn-enable-keyboard-fallback" class="btn-cyber secondary">
+            ⌨️ SWITCH TO KEYBOARD MODE (A / D / W / S)
+          </button>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-retry-camera" class="btn-cyber primary">🔄 [ ENABLE CAMERA ]</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main JavaScript Application Entrypoint -->
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
